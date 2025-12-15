@@ -1055,8 +1055,19 @@
 
                     <div class="settings-card">
                         <div class="settings-card-head">
-                            <h3 class="settings-card-title">User Queue</h3>
-                            <p class="settings-card-sub">List of users and predicted charges</p>
+                            <div style="display:flex; justify-content:space-between; align-items:end;">
+                                <div>
+                                    <h3 class="settings-card-title">User Queue</h3>
+                                    <p class="settings-card-sub">List of users and predicted charges</p>
+                                </div>
+                                <div>
+                                    <select id="queueSortSelect" style="padding: 4px 8px; font-size: 12px; width: auto; background: var(--bg-1);">
+                                        <option value="percentage">Charge % (High to Low)</option>
+                                        <option value="cooldown">Cooldown (Low to High)</option>
+                                        <option value="alphabetical">Name (A-Z)</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                         <div id="queueUserList" class="queue-user-list">

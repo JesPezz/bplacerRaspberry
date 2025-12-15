@@ -1,3 +1,6 @@
+// --- VARIABLES GLOBALES ---
+window.currentQueueSort = 'percentage'; // Variable global forzada
+
 async function applyLogSettingsFromServer() {
     try {
         const { data: currentSettings } = await axios.get('/settings');
@@ -7857,7 +7860,7 @@ function updateQueueSummary(summary) {
 }
 
 function updateQueueUserList(users) {
-    if (users.length === 0) {
+    if (!users || users.length === 0) {
         queueUserList.innerHTML = `
             <div class="queue-empty">
                 <img src="icons/manageUsers.svg" alt="" />
@@ -7867,30 +7870,65 @@ function updateQueueUserList(users) {
         return;
     }
 
+    // Leemos la variable global
+    const sortMode = window.currentQueueSort || 'percentage';
+    console.log("⚡ Ordenando lista usando modo:", sortMode);
+
+    // --- LOGICA DE ORDENAMIENTO ---
+    const sortedUsers = [...users].sort((a, b) => {
+        // Normalización de datos para evitar errores
+        const nameA = String(a.name || '').toLowerCase();
+        const nameB = String(b.name || '').toLowerCase();
+        const timeA = Number(a.cooldownTime || 0);
+        const timeB = Number(b.cooldownTime || 0);
+        const pctA = a.charges ? Number(a.charges.percentage || 0) : 0;
+        const pctB = b.charges ? Number(b.charges.percentage || 0) : 0;
+
+        if (sortMode === 'alphabetical') {
+            return nameA.localeCompare(nameB);
+        } else if (sortMode === 'cooldown') {
+            // Lógica especial: Ready (-1) va primero
+            const realA = (a.status === 'ready' || a.status === 'active') ? -1 : timeA;
+            const realB = (b.status === 'ready' || b.status === 'active') ? -1 : timeB;
+            
+            if (realA === realB) return nameA.localeCompare(nameB);
+            return realA - realB;
+        } else {
+            // Percentage (Descendente)
+            if (pctB === pctA) return nameA.localeCompare(nameB);
+            return pctB - pctA;
+        }
+    });
+
     const hideSensitive = hideSensitiveInfoQueue.checked;
 
-    const html = users.map(user => {
+    const html = sortedUsers.map(user => {
         let statusClass = getStatusClass(user.status);
         let statusText = getStatusText(user.status);
         if (!user.charges && user.status === 'active') {
-            statusText = 'SYNC'
+            statusText = 'SYNC';
         }
 
         const cooldownText = user.cooldownTime ? formatTime(user.cooldownTime) : '';
         const displayName = hideSensitive ? `User #${user.id.slice(-4)}` : user.name;
         const displayId = hideSensitive ? `#${user.id.slice(-4)}` : `#${user.id}`;
-
         const animateClass = isFirstLoad ? 'animate-in' : '';
         const barWidth = user.charges ? user.charges.percentage : 0;
 
         return `
             <div class="queue-user-item ${animateClass}">
-                <div class="queue-user-name">${displayName} <span class="queue-user-id">${displayId}</span> <span class="queue-charges-current">${user.charges ? user.charges.current : '--'}</span>/${user.charges ? user.charges.max : '--'} <span class="queue-charges-percentage">(${barWidth + '%'})</span></div>
+                <div class="queue-user-name">
+                    ${displayName} 
+                    <span class="queue-user-id">${displayId}</span> 
+                    <span class="queue-charges-current">${user.charges ? user.charges.current : '--'}</span>/${user.charges ? user.charges.max : '--'} 
+                    <span class="queue-charges-percentage">(${barWidth}%)</span>
+                </div>
                 <div class="queue-progress-bar">
                     <div class="queue-progress-fill" style="width: ${barWidth}%"></div>
                 </div>
-                <div class="queue-status-badge ${statusClass}">${statusText} ${cooldownText ? cooldownText : ''}</div>
-
+                <div class="queue-status-badge ${statusClass}">
+                    ${statusText} ${cooldownText}
+                </div>
             </div>
         `;
     }).join('');
@@ -7940,7 +7978,7 @@ function updateQueueLastUpdate(timestamp) {
 function showQueueError(message) {
     queueUserList.innerHTML = `
         <div class="queue-empty">
-            <img src="icons/error.svg" alt="" />
+            <img src="icons/remove.svg"" alt="" />
             <p>${message}</p>
         </div>
     `;
@@ -8173,4 +8211,37 @@ startAutoRegister.addEventListener('click', async () => {
     } finally {
         startAutoRegister.disabled = false;
     }
+}); // <--- ¡ESTA LLAVE CIERRA LA FUNCIÓN DE AUTO REGISTER!
+
+// =========================================================
+// SOLUCIÓN FINAL: DELEGACIÓN DE EVENTOS (AHORA SÍ FUERA DE LA FUNCIÓN)
+// =========================================================
+
+// 1. Asegurar variable global por si acaso
+if (typeof window.currentQueueSort === 'undefined') {
+    window.currentQueueSort = 'percentage';
+}
+
+// 2. Escuchar cambios en TODO el documento (Delegación)
+document.addEventListener('change', function(event) {
+    // ¿El elemento que cambió tiene el ID 'queueSortSelect'?
+    if (event.target && event.target.id === 'queueSortSelect') {
+        
+        // ¡Sí! Guardamos la preferencia
+        window.currentQueueSort = event.target.value;
+        console.log("🎯 ¡SELECTOR FUNCIONA! Nuevo orden:", window.currentQueueSort);
+
+        // Forzamos el re-ordenamiento inmediato visual
+        if (typeof currentQueueData !== 'undefined' && currentQueueData && currentQueueData.users) {
+            console.log("⚡ Re-ordenando lista ahora mismo...");
+            updateQueueUserList(currentQueueData.users);
+        }
+    }
 });
+
+// 3. Sincronizar visualmente al cargar la página
+document.addEventListener("DOMContentLoaded", () => {
+    const el = document.getElementById('queueSortSelect');
+    if (el) el.value = window.currentQueueSort || 'percentage';
+});
+
