@@ -1,3 +1,9 @@
+const $ = (id) => document.getElementById(id);
+const tgEnabled = $("tgEnabled");
+const tgBotToken = $("tgBotToken");
+const tgChatId = $("tgChatId");
+const tgTestBtn = $("tgTestBtn");
+
 // --- VARIABLES GLOBALES ---
 window.currentQueueSort = 'percentage'; // Variable global forzada
 
@@ -16,7 +22,6 @@ async function applyLogSettingsFromServer() {
         bind('log_estimatedTime');
     } catch (_) { }
 }
-const $ = (id) => document.getElementById(id);
 const main = $("main");
 const openManageUsers = $("openManageUsers");
 const openAddTemplate = $("openAddTemplate");
@@ -4501,6 +4506,11 @@ openSettings.addEventListener("click", async () => {
         antiGriefStandby.value = currentSettings.antiGriefStandby / 60000;
         chargeThreshold.value = currentSettings.chargeThreshold * 100;
         alwaysDrawOnCharge.checked = !!currentSettings.alwaysDrawOnCharge;
+        if (currentSettings.telegram) {
+        tgEnabled.checked = !!currentSettings.telegram.enabled;
+        tgBotToken.value = currentSettings.telegram.botToken || "";
+        tgChatId.value = currentSettings.telegram.chatId || "";
+    }
         if (maxPixelsPerPass) {
             const mpp = Number(currentSettings.maxPixelsPerPass);
             maxPixelsPerPass.value = Number.isFinite(mpp) ? String(mpp) : '0';
@@ -8243,5 +8253,49 @@ document.addEventListener('change', function(event) {
 document.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById('queueSortSelect');
     if (el) el.value = window.currentQueueSort || 'percentage';
+});
+
+// TELEGRAM SETTINGS HANDLERS
+async function saveTelegramSettings() {
+    try {
+        await axios.put('/settings', {
+            telegram: {
+                enabled: tgEnabled.checked,
+                botToken: tgBotToken.value.trim(),
+                chatId: tgChatId.value.trim()
+            }
+        });
+        showMessage("Success", "Telegram settings saved!");
+    } catch (e) {
+        handleError(e);
+    }
+}
+
+tgEnabled.addEventListener('change', saveTelegramSettings);
+tgBotToken.addEventListener('change', saveTelegramSettings);
+tgChatId.addEventListener('change', saveTelegramSettings);
+
+tgTestBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const token = tgBotToken.value.trim();
+    const chatId = tgChatId.value.trim();
+
+    if (!token || !chatId) {
+        showMessage("Error", "Please enter Token and Chat ID first.");
+        return;
+    }
+
+    tgTestBtn.disabled = true;
+    tgTestBtn.textContent = "Sending...";
+
+    try {
+        await axios.post('/test-telegram', { token, chatId });
+        showMessage("Success", "Test message sent! Check your Telegram.");
+    } catch (e) {
+        handleError(e);
+    } finally {
+        tgTestBtn.disabled = false;
+        tgTestBtn.textContent = "Test";
+    }
 });
 

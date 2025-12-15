@@ -12,6 +12,7 @@ import { request } from "undici";
 // import { Impit } from "impit";  // Временно отключено
 import { Image, createCanvas, loadImage } from "canvas";
 import CFClearanceManager from "./cf-clearance-manager.js";
+import TelegramBot from "node-telegram-bot-api";
 
 // List of fallback User-Agents when CF-Clearance is not used
 const fallbackUserAgents = [
@@ -2389,6 +2390,11 @@ let currentSettings = {
   proxyRotationMode: "sequential",
   logProxyUsage: false,
   parallelWorkers: 4,
+  telegram: {
+    enabled: false,
+    botToken: "",
+    chatId: ""
+  },
   logCategories: {
     tokenManager: true,
     cache: true,
@@ -2404,6 +2410,36 @@ if (existsSync(path.join(dataDir, "settings.json"))) {
   currentSettings = { ...currentSettings, ...loadJSON("settings.json") };
 }
 const saveSettings = () => saveJSON("settings.json", currentSettings);
+
+// --- TELEGRAM BOT SETUP ---
+let tgBot = null;
+
+function initTelegramBot() {
+  if (currentSettings.telegram && currentSettings.telegram.enabled && currentSettings.telegram.botToken) {
+    try {
+      tgBot = new TelegramBot(currentSettings.telegram.botToken, { polling: false });
+      console.log("📱 Telegram Bot initialized.");
+    } catch (e) {
+      console.error("❌ Telegram init failed:", e.message);
+      tgBot = null;
+    }
+  } else {
+    tgBot = null;
+  }
+}
+
+// Inicializar al arranque
+initTelegramBot();
+
+async function sendTelegramNotification(message, isHtml = true) {
+  if (!tgBot || !currentSettings.telegram?.enabled || !currentSettings.telegram?.chatId) return;
+  try {
+    const opts = isHtml ? { parse_mode: "HTML" } : {};
+    await tgBot.sendMessage(currentSettings.telegram.chatId, message, opts);
+  } catch (e) {
+    console.error("❌ Failed to send Telegram message:", e.message);
+  }
+}
 
 // --- Server state ---
 const activeBrowserUsers = new Set();
@@ -3066,6 +3102,11 @@ class TemplateManager {
             continue;
           } else {
             log("SYSTEM", "wplacer", `[${this.name}] 🖼 Template finished!`);
+            
+            // --- TELEGRAM NOTIFY ---
+            sendTelegramNotification(`🎨 <b>Template Finished!</b>\n\nName: <b>${this.name}</b>\nTotal Pixels: ${this.totalPixels}\n\n<i>Good job!</i>`);
+            // ---------------------
+
             this.status = "Finished.";
             this.running = false;
             break;
@@ -6899,6 +6940,11 @@ app.post("/proxies/cleanup", (req, res) => {
 app.put("/settings", (req, res) => {
   const patch = { ...req.body };
   // merge nested logCategories toggles
+  if (patch.telegram) {
+    currentSettings.telegram = { ...currentSettings.telegram, ...patch.telegram };
+    initTelegramBot(); // Reiniciar bot con nuevos datos
+    delete patch.telegram;
+  }
   if (patch.logCategories && typeof patch.logCategories === 'object') {
     const curr = currentSettings.logCategories || {};
     currentSettings.logCategories = { ...curr, ...patch.logCategories };
@@ -7420,6 +7466,19 @@ app.get('/export-tokens', (req, res) => {
       res.status(500).json({ error: error.message });
     }
   });
+
+  app.post("/test-telegram", async (req, res) => {
+  try {
+    const { token, chatId } = req.body;
+    if (!token || !chatId) return res.status(400).json({ error: "Missing token or chatId" });
+    
+    const tempBot = new TelegramBot(token, { polling: false });
+    await tempBot.sendMessage(chatId, "✅ <b>Test Message</b>\n\nYour bplacer bot is connected successfully!", { parse_mode: "HTML" });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
   const server = app.listen(port, host, () => {
     const serverMsg1 = `✅ Server listening on http://${hostname}:${port} (${host})`;
