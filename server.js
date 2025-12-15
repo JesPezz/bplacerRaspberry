@@ -2414,6 +2414,9 @@ const saveSettings = () => saveJSON("settings.json", currentSettings);
 // --- TELEGRAM BOT SETUP ---
 let tgBot = null;
 
+// --- GLOBAL LOCK (EJECUCIÓN SECUENCIAL) ---
+let globalActiveTemplateId = null; // Guarda el ID de la plantilla que está pintando
+
 function initTelegramBot() {
   if (currentSettings.telegram && currentSettings.telegram.enabled && currentSettings.telegram.botToken) {
     try {
@@ -2978,6 +2981,25 @@ class TemplateManager {
       }
 
       while (this.running) {
+        // --- INICIO LÓGICA SECUENCIAL ---
+      // 1. Si hay alguien pintando Y no soy yo...
+      if (globalActiveTemplateId && globalActiveTemplateId !== this.id) {
+          // Buscamos el nombre del que está ocupando el turno para mostrarlo
+          const busyName = templates[globalActiveTemplateId]?.name || 'otra plantilla';
+          this.status = `En cola (Esperando a "${busyName}")...`;
+          
+          // Esperamos 5 segundos antes de volver a preguntar
+          await this._sleepInterruptible(5000);
+          continue; // Saltamos al inicio del while para re-evaluar
+      }
+
+      // 2. Si el candado está libre, lo tomo yo
+      if (!globalActiveTemplateId) {
+          globalActiveTemplateId = this.id;
+          // Opcional: Avisar en consola que tomé el turno
+          // log(this.masterId, this.masterName, `[${this.name}] 🔒 Tomando turno de pintura.`);
+      }
+      // --- FIN LÓGICA SECUENCIAL ---
         // Throttled check of remaining pixels using the master account
         let summaryForTurn = null;
         const needFreshSummary = !this._lastSummary || (Date.now() - this._lastSummaryAt) >= this._summaryMinIntervalMs;
@@ -3397,6 +3419,12 @@ class TemplateManager {
       if (this.status !== "Finished.") {
         this.status = "Stopped.";
       }
+      // --- SOLTAR CANDADO ---
+      if (globalActiveTemplateId === this.id) {
+          globalActiveTemplateId = null;
+          log("SYSTEM", "Scheduler", `🔓 Template "${this.name}" liberó el turno.`);
+      }
+      // ---------------------
     }
   }
 }
@@ -6523,6 +6551,7 @@ app.post("/template", async (req, res) => {
     skipPaintedPixels,
     outlineMode
   );
+  templates[templateId].id = templateId;
   if (typeof req.body.autoBuyNeededColors !== 'undefined') {
     templates[templateId].autoBuyNeededColors = !!req.body.autoBuyNeededColors;
     if (templates[templateId].autoBuyNeededColors) {
@@ -7334,7 +7363,7 @@ app.get('/export-tokens', (req, res) => {
       
       // auto-start setting load
       tm.autoStart = !!t.autoStart;
-      
+      tm.id = id;
       templates[id] = tm;
     } else {
       console.warn(`⚠️ Template "${t.name}" was not loaded because its assigned user(s) no longer exist.`);
