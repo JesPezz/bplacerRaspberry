@@ -2547,6 +2547,13 @@ function logUserError(error, id, name, context) {
   if (message.includes("(401/403)") || /Unauthorized/i.test(message) || /cookies\s+are\s+invalid/i.test(message)) {
     // Log original message to avoid masking connection problems as auth issues
     log(id, name, `❌ ${message}`);
+
+    // --- TELEGRAM: GENERIC AUTH ERROR ---
+    // Evitamos duplicar si ya lo enviamos en el catch anterior (podemos filtrar por contexto si queremos, pero mejor que sobre a que falte)
+    if (message.includes("401") || /Unauthorized/i.test(message)) {
+         sendTelegramNotification(`⚠️ <b>Error de Cuenta (401)</b>\n\nUsuario: <b>${name}</b>\nContexto: ${context}\n\n<i>Revisar credenciales.</i>`);
+    }
+    // ------------------------------------
     return;
   }
 
@@ -2996,6 +3003,7 @@ class TemplateManager {
       // 2. Si el candado está libre, lo tomo yo
       if (!globalActiveTemplateId) {
           globalActiveTemplateId = this.id;
+          sendTelegramNotification(`🎨 <b>Iniciando Plantilla</b>\n\nNombre: <b>${this.name}</b>\nEstado: Turno adquirido (Fila India).\nProgreso: ${this.totalPixels - this.pixelsRemaining}/${this.totalPixels} px`);
           // Opcional: Avisar en consola que tomé el turno
           // log(this.masterId, this.masterName, `[${this.name}] 🔒 Tomando turno de pintura.`);
       }
@@ -3348,7 +3356,7 @@ class TemplateManager {
             if (error.message && (error.message.includes("Authentication failed (401)") || error.message.includes("Authentication expired"))) {
               const userName = users[foundUserForTurn]?.name || `#${foundUserForTurn}`;
               log(foundUserForTurn, userName, `[${this.name}] ❌ Authentication failed (401) - skipping user temporarily`);
-              
+              sendTelegramNotification(`⚠️ <b>Error de Autenticación (401)</b>\n\nUsuario: <b>${userName}</b>\nID: <code>${foundUserForTurn}</code>\n\n<i>La sesión ha caducado. Por favor, actualiza el token o las credenciales.</i>`);
               // Temporarily exclude user from queue for 5 minutes to avoid repeated auth failures
               if (!users[foundUserForTurn].authFailureUntil) {
                 users[foundUserForTurn].authFailureUntil = Date.now() + (5 * 60 * 1000); // 5 minutes
@@ -7519,6 +7527,8 @@ app.get('/export-tokens', (req, res) => {
     // Add server startup messages to Live Logs
     addToLiveLogs(serverMsg1);
     addToLiveLogs(serverMsg2);
+
+    sendTelegramNotification(`🚀 <b>bplacer Iniciado</b>\n\nEl servidor está en línea: http://${hostname}:${port}\nListo para pintar.`);
     
     // Auto-open browser
     const url = `http://${hostname}:${port}`;
