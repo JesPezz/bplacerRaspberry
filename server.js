@@ -2367,7 +2367,8 @@ const saveTemplates = () => {
       burstSeeds: t.burstSeeds || null,
       heatmapEnabled: !!t.heatmapEnabled,
       heatmapLimit: Math.max(0, Math.floor(Number(t.heatmapLimit || 10000))),
-      autoStart: !!t.autoStart
+      autoStart: !!t.autoStart,
+      pixelsRemaining: t.pixelsRemaining
     };
   }
   saveJSON("templates.json", templatesToSave);
@@ -7385,6 +7386,10 @@ app.get('/export-tokens', (req, res) => {
       
       // auto-start setting load
       tm.autoStart = !!t.autoStart;
+      // Si existe un progreso guardado, lo restauramos. Si no, calculamos el total inicial.
+      if (typeof t.pixelsRemaining === 'number') {
+          tm.pixelsRemaining = t.pixelsRemaining;
+      }
       tm.id = id;
       templates[id] = tm;
     } else {
