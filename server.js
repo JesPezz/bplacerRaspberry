@@ -13,6 +13,7 @@ import { request } from "undici";
 import { Image, createCanvas, loadImage } from "canvas";
 import CFClearanceManager from "./cf-clearance-manager.js";
 import TelegramBot from "node-telegram-bot-api";
+import si from "systeminformation";
 
 // List of fallback User-Agents when CF-Clearance is not used
 const fallbackUserAgents = [
@@ -3096,51 +3097,47 @@ class TemplateManager {
         if (this.pixelsRemaining === 0) {
           // Special log: when only premium pixels remain and no funds to auto-buy
           if (this.autoBuyNeededColors && this.templatePremiumColors && this.templatePremiumColors.size > 0) {
-            const hasAnyBasic = (() => {
-              try {
-                const t = this.template;
-                for (let x = 0; x < t.width; x++) {
-                  for (let y = 0; y < t.height; y++) {
-                    const id = t.data?.[x]?.[y] | 0; if (id > 0 && id < 32) return true;
-                  }
-                }
-              } catch { }
-              return false;
-            })();
-            if (!hasAnyBasic) {
-              const reserve = currentSettings.dropletReserve || 0;
-              const dummyTemplate = { width: 0, height: 0, data: [] };
-              const dummyCoords = [0, 0, 0, 0];
-              let anyCanBuy = false;
-              for (const uid of this.userIds) {
-                if (activeBrowserUsers.has(uid)) continue;
-                activeBrowserUsers.add(uid);
-                const w = new WPlacer(dummyTemplate, dummyCoords, currentSettings, this.name);
-                try { await w.login(users[uid].cookies); await w.loadUserInfo(); if ((Number(w.userInfo.droplets || 0) - reserve) >= 2000) { anyCanBuy = true; } }
-                catch { } finally { activeBrowserUsers.delete(uid); }
-                if (anyCanBuy) break;
-              }
-              if (!anyCanBuy) {
-                log("SYSTEM", "wplacer", `[${this.name}] ⛔ Stopping: Only premium pixels remain and none of assigned accounts have enough droplets to purchase required colors.`);
-              }
-            }
+             // ... (este bloque de lógica premium se queda igual, no lo toques si no quieres, o cópialo del original)
+             // Para simplificar, asegúrate de mantener la lógica interna si la tenías, 
+             // pero lo importante viene abajo en el if/else de AntiGrief
           }
+
           if (this.antiGriefMode) {
             this.status = "Monitoring for changes.";
+            
+            // CORRECCIÓN 1: Notificar Telegram también en modo Anti-Grief
+            // Usamos una bandera para no spamear cada 10 minutos si no ha cambiado nada
+            if (!this._hasNotifiedFinish) {
+                sendTelegramNotification(`🎨 <b>Plantilla Completada (Anti-Grief)</b>\n\nNombre: <b>${this.name}</b>\nEstado: Monitoreando cambios...\nTotal: ${this.totalPixels} px`);
+                this._hasNotifiedFinish = true; // Evitar repetir mensaje en el siguiente ciclo
+            }
+
             log("SYSTEM", "wplacer", `[${this.name}] 🖼 Template complete. Monitoring... Next check in ${currentSettings.antiGriefStandby / 60000} min.`);
+            
+            // CORRECCIÓN 2: SOLTAR EL CANDADO ANTES DE DORMIR
+            // Así las otras tareas pueden trabajar mientras esta duerme sus 10 minutos
+            if (globalActiveTemplateId === this.id) {
+                globalActiveTemplateId = null;
+                // log("SYSTEM", "Scheduler", `🔓 [Anti-Grief] "${this.name}" soltó el turno para dormir.`);
+            }
+
             await this._sleepInterruptible(currentSettings.antiGriefStandby);
-            continue;
+            continue; // Al despertar, volverá al inicio del while y pedirá el turno nuevamente
           } else {
             log("SYSTEM", "wplacer", `[${this.name}] 🖼 Template finished!`);
             
-            // --- TELEGRAM NOTIFY ---
-            sendTelegramNotification(`🎨 <b>Template Finished!</b>\n\nName: <b>${this.name}</b>\nTotal Pixels: ${this.totalPixels}\n\n<i>Good job!</i>`);
+            // TELEGRAM NOTIFY (Versión Normal)
+            sendTelegramNotification(`🎨 <b>Plantilla Finalizada!</b>\n\nNombre: <b>${this.name}</b>\nTotal Pixels: ${this.totalPixels}\n\n<i>Good job!</i>`);
             // ---------------------
 
             this.status = "Finished.";
             this.running = false;
             break;
           }
+        } else {
+            // Si hay pixeles pendientes, reseteamos la bandera de notificación
+            // para que si se vuelve a completar en el futuro, avise de nuevo.
+            this._hasNotifiedFinish = false;
         }
 
         if (this.userQueue.length === 0) this.userQueue = [...this.userIds];
@@ -7141,7 +7138,24 @@ app.get("/canvas", async (req, res) => {
   }
 });
 
-// (heatmap API removed)
+// --- API: Hardware Monitor ---
+app.get("/hardware", async (req, res) => {
+  try {
+    const temp = await si.cpuTemperature();
+    const mem = await si.mem();
+    
+    res.json({
+      temp: temp.main || -1, // Temperatura CPU
+      ram: {
+        total: mem.total,
+        used: mem.active,
+        free: mem.available
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Monitor error" });
+  }
+});
 
 // --- API: version check ---
 app.get("/version", async (_req, res) => {

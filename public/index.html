@@ -97,6 +97,19 @@
                 <img src="icons/settings.svg" alt="" />
                 <span>Settings</span>
             </button>
+            <div id="hwMonitor" style="margin-top: auto; padding: 15px; font-size: 11px; color: #888; border-top: 1px solid var(--border); background: rgba(0,0,0,0.2);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                <span>CPU Temp:</span>
+                <span id="hwTemp" style="font-weight:bold; color:#fff;">--°C</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span>RAM Usage:</span>
+                <span id="hwRam" style="font-weight:bold; color:#fff;">--%</span>
+            </div>
+            <div style="width:100%; background:#333; height:4px; border-radius:2px; overflow:hidden;">
+                <div id="hwRamBar" style="width:0%; background:var(--accent); height:100%; transition: width 0.5s ease;"></div>
+            </div>
+        </div>
         </aside>
 
         <!-- Content -->

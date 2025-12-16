@@ -24,6 +24,7 @@
     "express": "^5.1.0",
     "impit": "0.5.3",
     "node-telegram-bot-api": "^0.67.0",
+    "systeminformation": "^5.27.13",
     "tough-cookie": "^6.0.0",
     "undici": "^7.16.0"
   },

@@ -8299,3 +8299,44 @@ tgTestBtn.addEventListener('click', async (e) => {
     }
 });
 
+// ====== HARDWARE MONITOR ======
+const hwTemp = $("hwTemp");
+const hwRam = $("hwRam");
+const hwRamBar = $("hwRamBar");
+
+async function updateHardwareStats() {
+    if (!hwTemp) return; 
+    try {
+        const { data } = await axios.get('/hardware');
+        
+        // Temperatura
+        const temp = Math.round(data.temp);
+        hwTemp.textContent = `${temp}°C`;
+        
+        // Colores de alerta para temperatura (Pi 5)
+        // <60: Verde, 60-80: Naranja, >80: Rojo
+        if (temp < 60) hwTemp.style.color = '#4caf50'; 
+        else if (temp < 80) hwTemp.style.color = '#ff9800'; 
+        else hwTemp.style.color = '#f44336'; 
+
+        // RAM
+        const usedGb = (data.ram.used / 1024 / 1024 / 1024).toFixed(1);
+        const totalGb = (data.ram.total / 1024 / 1024 / 1024).toFixed(1);
+        const ramPct = Math.round((data.ram.used / data.ram.total) * 100);
+        
+        hwRam.textContent = `${ramPct}% (${usedGb}/${totalGb} GB)`;
+        hwRamBar.style.width = `${ramPct}%`;
+        
+        // Color barra RAM (Rojo si pasa de 90%)
+        hwRamBar.style.background = ramPct > 90 ? '#f44336' : 'var(--accent)';
+        
+    } catch (e) {
+        console.warn("Hardware monitor failed:", e);
+    }
+}
+
+// Actualizar cada 5 segundos
+setInterval(updateHardwareStats, 5000);
+// Primera carga inmediata (con un pequeño delay para asegurar carga del DOM)
+setTimeout(updateHardwareStats, 1000);
+
