@@ -2419,6 +2419,30 @@ let tgBot = null;
 // --- GLOBAL LOCK (EJECUCIÓN SECUENCIAL) ---
 let globalActiveTemplateId = null; // Guarda el ID de la plantilla que está pintando
 
+// --- NOTIFICATION COOLDOWNS ---
+const authNotificationCooldowns = new Map(); // Memoria para saber a quién ya reportamos
+
+function notifyAuthErrorWithCooldown(id, name, context) {
+    const now = Date.now();
+    const key = String(id); // Usamos el ID del usuario como clave única
+    const COOLDOWN_TIME = 30 * 60 * 1000; // 30 Minutos de silencio por usuario
+
+    // Verificamos si ya avisamos recientemente
+    if (authNotificationCooldowns.has(key)) {
+        const lastTime = authNotificationCooldowns.get(key);
+        // Si no ha pasado el tiempo de enfriamiento, no hacemos nada
+        if (now - lastTime < COOLDOWN_TIME) {
+            return; 
+        }
+    }
+
+    // Si pasó el tiempo o es la primera vez, enviamos el mensaje
+    sendTelegramNotification(`⚠️ <b>Error de Cuenta (401)</b>\n\nUsuario: <b>${name}</b>\nID: <code>${id}</code>\nContexto: ${context}\n\n<i>Revisar credenciales. (Silenciando este error por 30 min)</i>`);
+
+    // Guardamos la hora actual para bloquear futuros mensajes
+    authNotificationCooldowns.set(key, now);
+}
+
 function initTelegramBot() {
   if (currentSettings.telegram && currentSettings.telegram.enabled && currentSettings.telegram.botToken) {
     try {
@@ -2547,15 +2571,13 @@ function logUserError(error, id, name, context) {
 
   // Simplify error messages for common auth issues
   if (message.includes("(401/403)") || /Unauthorized/i.test(message) || /cookies\s+are\s+invalid/i.test(message)) {
-    // Log original message to avoid masking connection problems as auth issues
     log(id, name, `❌ ${message}`);
-
-    // --- TELEGRAM: GENERIC AUTH ERROR ---
-    // Evitamos duplicar si ya lo enviamos en el catch anterior (podemos filtrar por contexto si queremos, pero mejor que sobre a que falte)
-    if (message.includes("401") || /Unauthorized/i.test(message)) {
-         sendTelegramNotification(`⚠️ <b>Error de Cuenta (401)</b>\n\nUsuario: <b>${name}</b>\nContexto: ${context}\n\n<i>Revisar credenciales.</i>`);
-    }
-    // ------------------------------------
+    
+    // --- TELEGRAM: GENERIC AUTH ERROR (CON COOLDOWN) ---
+    // Usamos la nueva función inteligente que evita el spam
+    notifyAuthErrorWithCooldown(id, name, context);
+    // --------------------------------------------------
+    
     return;
   }
 
@@ -3354,7 +3376,7 @@ class TemplateManager {
             if (error.message && (error.message.includes("Authentication failed (401)") || error.message.includes("Authentication expired"))) {
               const userName = users[foundUserForTurn]?.name || `#${foundUserForTurn}`;
               log(foundUserForTurn, userName, `[${this.name}] ❌ Authentication failed (401) - skipping user temporarily`);
-              sendTelegramNotification(`⚠️ <b>Error de Autenticación (401)</b>\n\nUsuario: <b>${userName}</b>\nID: <code>${foundUserForTurn}</code>\n\n<i>La sesión ha caducado. Por favor, actualiza el token o las credenciales.</i>`);
+              notifyAuthErrorWithCooldown(foundUserForTurn, userName, "Painting loop");
               // Temporarily exclude user from queue for 5 minutes to avoid repeated auth failures
               if (!users[foundUserForTurn].authFailureUntil) {
                 users[foundUserForTurn].authFailureUntil = Date.now() + (5 * 60 * 1000); // 5 minutes
